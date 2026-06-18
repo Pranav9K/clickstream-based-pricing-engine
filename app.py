@@ -6,22 +6,22 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # ----------------------------------------------------
-# browser window configuration
+# Browser Window Configuration
 # ----------------------------------------------------
 st.set_page_config(
-    page_title="Dynamic Pricing Engine Dashboard",
-    page_icon="🚀",
+    page_title="Seller Pricing Optimizer",
+    page_icon="🛍️",
     layout="wide"
 )
 
-st.title("🚀 Real-Time Clickstream Behavioral Pricing Engine")
+st.title("🛍️ AI Pricing Optimizer")
 st.markdown("""
-This production dashboard links user clickstream metadata with machine learning to optimize item prices against consumer demand elasticity metrics.
-**Use the sidebar to manually input product metrics and simulate live market shocks.**
+Welcome! This tool helps you find the perfect selling price for your products. 
+Use the sidebar on the left to input your product's details, and the AI will calculate the price that maximizes your total profit.
 """)
 
 # ----------------------------------------------------
-# loading machine learning artifacts
+# Loading Machine Learning Artifacts
 # ----------------------------------------------------
 @st.cache_resource
 def load_ml_assets():
@@ -29,45 +29,75 @@ def load_ml_assets():
     feature_cols = joblib.load('streamlit_assets/model_feature_schema.pkl')
     return model, feature_cols
 
-# ----------------------------------------------------
-# failsafe data import check
-# ----------------------------------------------------
 try:
     pricing_model, feature_cols = load_ml_assets()
 except Exception as e:
-    st.error("⚠️ System Error: Missing core deployment artifacts. Ensure your model is saved in the 'streamlit_assets' folder!")
+    st.error("⚠️ System Error: Missing AI model files. Ensure your model is saved in the 'streamlit_assets' folder!")
     st.stop()
 
 # ----------------------------------------------------
-# sidebar navigation and manual input management
+# Sidebar: Step-by-Step Seller Inputs
 # ----------------------------------------------------
-st.sidebar.header("⚙️ Manual Product Inputs")
-st.sidebar.markdown("Define the baseline metrics for the product you want to analyze.")
+st.sidebar.header("Step 1: Product Details")
 
-wholesale_cost = st.sidebar.number_input("Wholesale Unit Cost ($):", min_value=0.01, value=50.00, step=1.00)
-original_price = st.sidebar.number_input("Current/Original Price ($):", min_value=0.01, value=120.00, step=1.00)
-click_velocity = st.sidebar.number_input("Historical Click Velocity (Page Views):", min_value=1, value=450, step=10)
+wholesale_cost = st.sidebar.number_input(
+    "1. Unit Cost ($):", 
+    min_value=0.01, value=50.00, step=1.00,
+    help="How much does it cost you to manufacture or buy one unit of this product?"
+)
 
-# Input ratio as a percentage for better UX, then convert to decimal for the model
-cart_ratio_pct = st.sidebar.slider("Purchase Intent (Cart-to-View %):", min_value=0.0, max_value=100.0, value=9.5, step=0.1)
+original_price = st.sidebar.number_input(
+    "2. Current Selling Price ($):", 
+    min_value=0.01, value=120.00, step=1.00,
+    help="What price are you currently selling this product for?"
+)
+
+st.sidebar.markdown("---")
+st.sidebar.header("Step 2: Store Traffic")
+
+click_velocity = st.sidebar.number_input(
+    "3. Daily Page Views:", 
+    min_value=1, value=450, step=10,
+    help="On average, how many times is this product's page viewed per day?"
+)
+
+cart_ratio_pct = st.sidebar.slider(
+    "4. Add-to-Cart Rate (%):", 
+    min_value=0.0, max_value=100.0, value=9.5, step=0.1,
+    help="Out of 100 people who view the product, how many add it to their cart?"
+)
 cart_ratio = cart_ratio_pct / 100.0
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("📈 Live Market Shock Simulation")
-velocity_multiplier = st.sidebar.slider("Simulate View Traffic Multiplier:", 0.5, 3.0, 1.0, step=0.1)
+st.sidebar.header("Step 3: Market Scenarios")
+with st.sidebar.expander("Test Traffic Surges/Drops"):
+    velocity_multiplier = st.slider(
+        "Traffic Multiplier:", 
+        0.5, 3.0, 1.0, step=0.1,
+        help="Simulate what happens if a marketing campaign suddenly doubles your traffic (2.0x) or if traffic drops in half (0.5x)."
+    )
 
-# calculate the new simulated click speed
 adjusted_velocity = click_velocity * velocity_multiplier
 
 # ----------------------------------------------------
-# simulation and optimization engine core
+# Engine Core: Calculating the Best Price
 # ----------------------------------------------------
-# Search space: From slightly above wholesale cost up to 2.5x the original price
 simulated_prices = np.linspace(wholesale_cost + 1.0, original_price * 2.5, 100)
 best_price = original_price
 max_expected_profit = -float('inf')
 optimization_records = []
 
+# Calculate current baseline metrics to compare against
+current_margin = (original_price - wholesale_cost) / original_price
+current_payload = pd.DataFrame([{
+    'price_usd': original_price, 'cost_usd': wholesale_cost,
+    'click_velocity': adjusted_velocity, 'cart_to_view_ratio': cart_ratio,
+    'gross_margin_pct': current_margin
+}])
+current_conversion = pricing_model.predict(current_payload)[0]
+current_profit = (original_price - wholesale_cost) * (current_conversion * adjusted_velocity)
+
+# Loop to find the optimal price
 for sim_price in simulated_prices:
     sim_margin = (sim_price - wholesale_cost) / sim_price
     
@@ -79,10 +109,7 @@ for sim_price in simulated_prices:
         'gross_margin_pct': sim_margin
     }])
     
-    # Predict conversion probability
     predicted_conversion = pricing_model.predict(input_payload)[0]
-    
-    # Projected profit stream
     expected_profit = (sim_price - wholesale_cost) * (predicted_conversion * adjusted_velocity)
     
     optimization_records.append((sim_price, expected_profit))
@@ -92,53 +119,53 @@ for sim_price in simulated_prices:
         best_price = sim_price
 
 # ----------------------------------------------------
-# metric card visual grid (row 1)
+# Main Dashboard UI
 # ----------------------------------------------------
-col1, col2, col3, col4 = st.columns(4)
+
+# Top Summary Alert
+profit_lift = max_expected_profit - current_profit
+
+if profit_lift > 0:
+    st.success(f"🎉 **Action Recommended:** Changing your price to **${best_price:.2f}** could generate an estimated **${profit_lift:,.2f}** in additional profit per cycle!")
+else:
+    st.info(f"✅ **Action Recommended:** Keep your price at **${original_price:.2f}**. You are currently priced perfectly for maximum profit.")
+
+st.markdown("### 📊 Strategy Comparison")
+
+col1, col2 = st.columns(2)
 
 with col1:
-    st.metric(label="Wholesale Unit Floor Cost", value=f"${wholesale_cost:.2f}")
+    st.markdown("#### 🏢 Current Strategy")
+    st.metric(label="Current Selling Price", value=f"${original_price:.2f}")
+    st.metric(label="Projected Total Profit", value=f"${current_profit:,.2f}")
+
 with col2:
-    st.metric(label="Original Catalog Price", value=f"${original_price:.2f}")
-with col3:
-    st.metric(label="Engine Recommended Price", value=f"${best_price:.2f}", delta=f"${best_price - original_price:.2f}")
-with col4:
-    st.metric(label="Max Projected Profit Stream", value=f"${max_expected_profit:.2f}")
+    st.markdown("#### 🚀 Recommended Strategy")
+    st.metric(label="Optimized Target Price", value=f"${best_price:.2f}", delta=f"${best_price - original_price:.2f}")
+    st.metric(label="Max Projected Profit", value=f"${max_expected_profit:,.2f}", delta=f"${profit_lift:,.2f} Lift")
 
 st.markdown("---")
 
 # ----------------------------------------------------
-# visual charts and live performance insights (row 2)
+# Visual Charting
 # ----------------------------------------------------
-graph_col1, graph_col2 = st.columns(2)
+st.subheader("📈 Demand vs. Profit Curve")
+st.markdown("This chart visualizes how high you can raise your price before buyer resistance causes your total profits to drop.")
 
-with graph_col1:
-    st.subheader("📊 Revenue Optimization Target Wave")
-    plot_df = pd.DataFrame(optimization_records, columns=['Simulated_Price', 'Expected_Profit'])
-    
-    fig, ax = plt.subplots(figsize=(7, 3.8))
-    ax.plot(plot_df['Simulated_Price'], plot_df['Expected_Profit'], color='darkorange', linewidth=3)
-    ax.axvline(x=best_price, color='red', linestyle='--', label=f'Optimal Target (${best_price:.2f})')
-    ax.axvline(x=original_price, color='blue', linestyle=':', label=f'Original Catalog (${original_price:.2f})')
-    
-    ax.set_xlabel("Simulated Retail Price ($)")
-    ax.set_ylabel("Projected Profit Stream ($)")
-    ax.legend(fontsize=8)
-    sns.despine() 
-    st.pyplot(fig)
+plot_df = pd.DataFrame(optimization_records, columns=['Simulated_Price', 'Expected_Profit'])
 
-with graph_col2:
-    st.subheader("🎯 Custom Scenario Insights")
-    st.write(f"**Current Input Margin:** `{(original_price - wholesale_cost) / original_price * 100:.2f}%`")
-    st.write(f"**Baseline Click Velocity:** `{click_velocity:,.0f} historical page views`")
-    st.write(f"**Simulated Click Velocity Surge:** `{adjusted_velocity:,.0f} active tracking views`")
-    st.write(f"**Purchase Intent Ratio:** `{cart_ratio * 100:.2f}%`")
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    if best_price > original_price:
-        st.success("💡 **Recommendation Summary:** The engine suggests raising the price. Projected demand elasticity at these specific input levels can sustain a higher margin without destroying total volume.")
-    elif best_price < original_price:
-        st.warning("💡 **Recommendation Summary:** High demand resistance detected. Lowering the price to the recommended target will likely increase volume enough to net a higher total profit.")
-    else:
-        st.info("💡 **Recommendation Summary:** Current pricing is perfectly optimized for maximum profit generation given the inputted conversion metrics.")
+fig, ax = plt.subplots(figsize=(10, 4))
+ax.plot(plot_df['Simulated_Price'], plot_df['Expected_Profit'], color='#2ca02c', linewidth=3)
+
+# Highlight zones
+ax.axvline(x=best_price, color='#d62728', linestyle='--', label=f'Optimal Price (${best_price:.2f})')
+ax.axvline(x=original_price, color='#1f77b4', linestyle=':', label=f'Current Price (${original_price:.2f})')
+
+# Clean up chart aesthetics
+ax.set_xlabel("Potential Retail Price ($)", fontsize=10, fontweight='bold')
+ax.set_ylabel("Estimated Profit ($)", fontsize=10, fontweight='bold')
+ax.grid(axis='y', linestyle='--', alpha=0.7)
+ax.legend(fontsize=10)
+sns.despine() 
+
+st.pyplot(fig)
