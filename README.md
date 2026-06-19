@@ -8,6 +8,8 @@
 ## 📖 Project Overview
 This repository contains an enterprise-grade data pipeline and optimization system that utilizes machine learning to reverse-engineer **Consumer Demand Elasticity**. By integrating over 760,000 raw, sequential user clickstream rows with catalog attributes, the system tracks fine-grained behavior metrics—such as real-time page traffic momentum and cart abandonment ratios—to dynamically predict item conversion rates and maximize overall expected store profit.
 
+Live ON: https://clickstream-based-pricing-engine.streamlit.app/
+
 Rather than relying on static or rule-based markups, the backend trains a **Random Forest Regressor** to predict checkout likelihood across 100 simulated pricing variations per product. An automated decision loop then isolates the exact retail pricing "sweet spot" while enforcing a strict, defensive wholesale cost floor buffer to ensure risk-free margin protection.
 
 The entire architecture is wrapped inside an interactive **Streamlit web application**, allowing product managers to monitor behavioral KPIs and simulate real-time market traffic shocks.
